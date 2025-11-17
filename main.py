@@ -1,15 +1,23 @@
 import os
 import random
+import base64
+from io import BytesIO
 from typing import Optional, Dict, List
 
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel
 
 from database import db, create_document, get_documents
 from bson import ObjectId
 
-from schemas import Corpus, GenerationRequest, GenerationResponse, CorpusSummary
+from schemas import (
+    Corpus,
+    GenerationRequest,
+    GenerationResponse,
+    CorpusSummary,
+    TTSRequest,
+    TTSResponse,
+)
 
 app = FastAPI(title="Creative N-gram Generator API")
 
@@ -152,15 +160,43 @@ def generate_text(req: GenerationRequest):
         output = model.generate(length=req.length, temperature=req.temperature, seed=req.seed)
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
-    except Exception as e:
+    except Exception:
         raise HTTPException(status_code=500, detail="Generation failed")
 
-    return GenerationResponse(output=output, used_corpus_id=used_corpus_id, meta={
-        "order": req.order,
-        "length": req.length,
-        "temperature": req.temperature,
-        "seed": req.seed or None
-    })
+    # include stylistic hints in meta for transparency
+    return GenerationResponse(
+        output=output,
+        used_corpus_id=used_corpus_id,
+        meta={
+            "order": req.order,
+            "length": req.length,
+            "temperature": req.temperature,
+            "seed": req.seed or None,
+            "genre": getattr(req, "genre", None),
+            "flow": getattr(req, "flow", None),
+            "bpm": getattr(req, "bpm", None),
+            "mood": getattr(req, "mood", None),
+            "voice": getattr(req, "voice", None),
+            "language": getattr(req, "language", None),
+        },
+    )
+
+
+@app.post("/tts", response_model=TTSResponse)
+def text_to_speech(tts: TTSRequest):
+    try:
+        # Lazy import to speed cold start
+        from gtts import gTTS  # type: ignore
+
+        # Note: gTTS doesn't support gender selection; we pass language and slow.
+        # The 'voice' field is accepted for API symmetry but not used by gTTS.
+        mp3_buffer = BytesIO()
+        gTTS(text=tts.text, lang=tts.language or "en", slow=tts.slow).write_to_fp(mp3_buffer)
+        mp3_buffer.seek(0)
+        b64 = base64.b64encode(mp3_buffer.read()).decode("utf-8")
+        return TTSResponse(audio_base64=b64, mime_type="audio/mpeg")
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"TTS failed: {str(e)}")
 
 
 if __name__ == "__main__":
