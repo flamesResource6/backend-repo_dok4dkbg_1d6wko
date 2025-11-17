@@ -1,48 +1,27 @@
-"""
-Database Schemas
-
-Define your MongoDB collection schemas here using Pydantic models.
-These schemas are used for data validation in your application.
-
-Each Pydantic model represents a collection in your database.
-Model name is converted to lowercase for the collection name:
-- User -> "user" collection
-- Product -> "product" collection
-- BlogPost -> "blogs" collection
-"""
-
 from pydantic import BaseModel, Field
-from typing import Optional
+from typing import Optional, List
 
-# Example schemas (replace with your own):
+# Collections
+class Corpus(BaseModel):
+    title: str = Field(..., description="Display name for this corpus")
+    text: str = Field(..., min_length=1, description="Raw text used to train the generator")
 
-class User(BaseModel):
-    """
-    Users collection schema
-    Collection name: "user" (lowercase of class name)
-    """
-    name: str = Field(..., description="Full name")
-    email: str = Field(..., description="Email address")
-    address: str = Field(..., description="Address")
-    age: Optional[int] = Field(None, ge=0, le=120, description="Age in years")
-    is_active: bool = Field(True, description="Whether user is active")
+# Requests
+class GenerationRequest(BaseModel):
+    text: Optional[str] = Field(None, description="Raw text to generate from. Mutually exclusive with corpus_id")
+    corpus_id: Optional[str] = Field(None, description="Existing corpus to generate from")
+    length: int = Field(200, ge=1, le=2000)
+    order: int = Field(3, ge=1, le=10)
+    temperature: float = Field(1.0, gt=0.0, le=2.5)
+    seed: Optional[str] = Field(None, description="Optional starting string")
 
-class Product(BaseModel):
-    """
-    Products collection schema
-    Collection name: "product" (lowercase of class name)
-    """
-    title: str = Field(..., description="Product title")
-    description: Optional[str] = Field(None, description="Product description")
-    price: float = Field(..., ge=0, description="Price in dollars")
-    category: str = Field(..., description="Product category")
-    in_stock: bool = Field(True, description="Whether product is in stock")
+class GenerationResponse(BaseModel):
+    output: str
+    used_corpus_id: Optional[str] = None
+    meta: dict = {}
 
-# Add your own schemas here:
-# --------------------------------------------------
-
-# Note: The Flames database viewer will automatically:
-# 1. Read these schemas from GET /schema endpoint
-# 2. Use them for document validation when creating/editing
-# 3. Handle all database operations (CRUD) directly
-# 4. You don't need to create any database endpoints!
+# Responses
+class CorpusSummary(BaseModel):
+    id: str
+    title: str
+    created_at: Optional[str] = None
